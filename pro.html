@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to Audio</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', sans-serif;
+            background: url('C:/Users/Vanne/Downloads/Screenshot_2024-05-16_111005-removebg.png') no-repeat center center fixed;
+            background-size: cover;
+            margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh;
+            transition: background-color 0.3s ease;
+        }
+        #content {
+            background-color: white; padding: 40px 20px; border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); width: 100%; max-width: 500px;
+            text-align: center; overflow-y: auto; max-height: 90vh;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        h1 { color: black; margin-bottom: 30px; font-size: 24px; letter-spacing: 2px; }
+        input, textarea {
+            width: calc(100% - 24px); padding: 12px; margin: 12px 0; border: 2px solid #ccc;
+            border-radius: 10px; font-size: 16px; color: black; background-color: #f9f9f9;
+        }
+        button {
+            background-color: #5D3FD3; color: white; border: none; border-radius: 10px;
+            padding: 12px 25px; cursor: pointer; margin: 20px 0; font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover { background-color: #4B2BAF; }
+        p, a { color: black; }
+        a { color: #5D3FD3; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .hidden { display: none; }
+        .dark-mode {
+            background-color: #333; background-image: none;
+            color: white;
+        }
+        .dark-mode #content { background-color: #444; }
+        .dark-mode input, .dark-mode textarea { background-color: #666; color: white; }
+        .dark-mode button { background-color: #666; }
+        .dark-mode button:hover { background-color: #555; }
+    </style>
+</head>
+<body>
+    <div id="content">
+        <div id="signinPage">
+            <h1>WELCOME TO THE CONVERTER</h1>    
+            <h1>SIGN IN</h1>
+            <form id="signinForm">
+                <input type="text" id="signinUsername" placeholder="Username">
+                <input type="password" id="signinPassword" placeholder="Password">
+                <button type="button" onclick="signIn()">Sign In</button>
+            </form>
+            <p>Don't have an account? <a href="#" onclick="showPage('signupPage')">Sign Up</a></p>
+            <p><button type="button" onclick="toggleDarkMode()">Toggle Dark Mode</button></p>
+        </div>
+        <div id="signupPage" class="hidden">
+            <h1>Sign Up</h1>
+            <form id="signupForm">
+                <input type="text" id="signupUsername" placeholder="Username">
+                <input type="password" id="signupPassword" placeholder="Password">
+                <input type="file" id="signupProfilePic" accept="image/*">
+                <button type="button" onclick="signUp()">Sign Up</button>
+            </form>
+        </div>
+        <div id="profilePage" class="hidden">
+            <h1>Profile</h1>
+            <img id="profilePicture" src="" alt="Profile Picture" style="border-radius: 50%; width: 100px; height: 100px;">
+            <p id="profileUsername"></p>
+            <button type="button" onclick="showPage('conversionPage')">Go to Conversion</button>
+        </div>
+        <div id="conversionPage" class="hidden">
+            <h1>CONVERT TEXT TO AUDIO</h1>
+            <textarea id="textInput" rows="4" placeholder="Enter text here..."></textarea><br>
+            <select id="voiceSelect"></select>
+            <button type="button" onclick="convertTextToAudio()">Convert Text to Audio</button>
+            <p>Or convert PDF to audio:</p>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <input type="file" id="pdfFile">
+                <button type="button" onclick="convertPDFToAudio()">Convert PDF to Audio</button>
+            </form>
+            <audio id="audioPlayer" controls class="hidden"></audio>
+            <p><button type="button" onclick="downloadAudio()">Download Audio</button></p>
+            <div id="loading" class="hidden">Converting PDF, please wait...</div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            populateVoiceList();
+            if (typeof speechSynthesis !== 'undefined') {
+                speechSynthesis.onvoiceschanged = populateVoiceList;
+            }
+        });
+
+        function showPage(pageId) {
+            document.querySelectorAll('#content > div').forEach(div => {
+                div.style.display = div.id === pageId ? 'block' : 'none';
+            });
+        }
+
+        function convertTextToAudio() {
+            const text = document.getElementById('textInput').value.trim();
+            const voice = document.getElementById('voiceSelect').value;
+            if (!text) return alert("Please enter some text.");
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = speechSynthesis.getVoices().find(v => v.name === voice);
+            utterance.lang = 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function convertPDFToAudio() {
+            const file = document.getElementById('pdfFile').files[0];
+            if (!file) return;
+
+            document.getElementById('loading').classList.remove('hidden');
+            const reader = new FileReader();
+            reader.onload = () => {
+                const typedarray = new Uint8Array(reader.result);
+                pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                    const promises = [];
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        promises.push(pdf.getPage(i).then(page => page.getTextContent().then(content => {
+                            return content.items.map(item => item.str).join(' ');
+                        })));
+                    }
+                    Promise.all(promises).then(pages => {
+                        textToSpeech(pages.join(' '));
+                        document.getElementById('loading').classList.add('hidden');
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function textToSpeech(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function populateVoiceList() {
+            const voices = speechSynthesis.getVoices();
+            const select = document.getElementById('voiceSelect');
+            select.innerHTML = '';
+            voices.forEach(voice => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = voice.name;
+                select.appendChild(option);
+            });
+        }
+
+        function signUp() {
+            const username = document.getElementById('signupUsername').value;
+            const pic = document.getElementById('signupProfilePic').files[0];
+            localStorage.setItem('username', username);
+            if (pic) {
+                const reader = new FileReader();
+                reader.onload = e => localStorage.setItem('profilePic', e.target.result);
+                reader.readAsDataURL(pic);
+            }
+            showPage('signinPage');
+        }
+
+        function signIn() {
+            const username = document.getElementById('signinUsername').value;
+            if (username === localStorage.getItem('username')) {
+                document.getElementById('profileUsername').textContent = username;
+                document.getElementById('profilePicture').src = localStorage.getItem('profilePic');
+                showPage('profilePage');
+            } else {
+                alert("Invalid username");
+            }
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+
+        function downloadAudio() {
+            alert("This functionality is not yet implemented.");
+        }
+    </script>
+</body>
+</html>
